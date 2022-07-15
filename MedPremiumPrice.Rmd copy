@@ -1,0 +1,471 @@
+---
+title: "Prediction of Medical Premium Price"
+author: "Elena Denner"
+output: html_document
+---
+### Load libraries
+```{r message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(rsample)
+library(randomForest)
+library(janitor)
+library(rpart)
+library(rpart.plot)
+library(gbm)
+library(glmnet)
+library(tree)
+library(RColorBrewer)
+library(gridExtra)
+library(ggplot2)
+library(pls)
+library(jtools)
+```
+
+### Dataset 
+```{r message=FALSE}
+setwd('/Users/elena/Downloads/MedicalPricePremium')
+medpremium <- read_csv("Medicalpremium.csv")
+glimpse(medpremium)
+```
+
+### Data Cleaning
+```{r message=FALSE}
+medpremium <- clean_names(medpremium)
+
+medpremium <- medpremium %>%
+  drop_na() %>%
+  mutate(diabetes = as.factor(case_when(diabetes == 0 ~ "No",
+                              diabetes == 1 ~ "Yes"))) %>%
+  mutate(blood_pressure_problems = as.factor(case_when(blood_pressure_problems == 0 ~ "No",
+                              blood_pressure_problems == 1 ~ "Yes"))) %>%
+  mutate(any_transplants = as.factor(case_when(any_transplants == 0 ~ "No",
+                              any_transplants == 1 ~ "Yes"))) %>%
+  mutate(any_chronic_diseases = as.factor(case_when(any_chronic_diseases == 0 ~ "No",
+                              any_chronic_diseases == 1 ~ "Yes"))) %>%
+  mutate(known_allergies = as.factor(case_when(known_allergies == 0 ~ "No",
+                              known_allergies == 1 ~ "Yes"))) %>%
+  mutate(history_of_cancer_in_family = as.factor(case_when(history_of_cancer_in_family == 0 ~ "No",
+                              history_of_cancer_in_family == 1 ~ "Yes")))
+```
+
+### Data Exploration
+```{r}
+v1 <- ggplot(medpremium) +
+  geom_boxplot(aes(y=premium_price, x=diabetes, fill=diabetes), show.legend=FALSE) +
+  xlab("Diabetes") +
+  ylab("Premium Price")
+
+v2 <- ggplot(medpremium) +
+  geom_boxplot(aes(y=premium_price, x=any_transplants, fill=any_transplants), show.legend=FALSE) +
+  xlab("Any Transplants") +
+  ylab("Premium Price")
+
+v3 <- ggplot(medpremium) +
+  geom_boxplot(aes(y=premium_price, x=any_chronic_diseases, fill=any_chronic_diseases), show.legend = FALSE) +
+   xlab("Chronic Diseases") +
+  ylab("Premium Price")
+
+v4 <- ggplot(medpremium) +
+  geom_boxplot(aes(y=premium_price, x=blood_pressure_problems, fill=blood_pressure_problems), show.legend = FALSE) +
+   xlab("Blood Pressure Problems") +
+  ylab("Premium Price")
+
+v5 <- ggplot(medpremium) +
+  geom_boxplot(aes(y=premium_price, x=known_allergies, fill=known_allergies), show.legend = FALSE) +
+   xlab("Known Allergies") +
+  ylab("Premium Price")
+
+v6 <- ggplot(medpremium) +
+  geom_boxplot(aes(y=premium_price, x=history_of_cancer_in_family, fill=history_of_cancer_in_family), show.legend = FALSE) +
+  xlab("Cancer in Family") +
+  ylab("Premium Price")
+
+grid.arrange(v1, v2, v3, v4, v5, v6, nrow=2)
+```
+
+```{r}
+v7 <- ggplot(medpremium) +
+  geom_point(aes(x=age,y=premium_price)) +
+  geom_smooth(aes(x=age,y=premium_price)) +
+  xlab("Age (years)") +
+  ylab("Premium Price")
+
+v8 <- ggplot(medpremium) +
+  geom_point(aes(x=weight,y=premium_price)) +
+  geom_smooth(aes(x=weight,y=premium_price), colour="green") +
+  xlab("Weight (kg)") +
+  ylab("Premium Price")
+
+v9 <- ggplot(medpremium) +
+  geom_point(aes(x=height,y=premium_price)) +
+  geom_smooth(aes(x=height,y=premium_price), colour="red") +
+  xlab("Height (cm)") +
+  ylab("Premium Price")
+
+v10 <- ggplot(medpremium, mapping=aes(x=premium_price, y=factor(number_of_major_surgeries), fill=factor(number_of_major_surgeries))) +
+  geom_violin(color="red", fill="orange", alpha=0.2, show.legend = FALSE) +
+  labs(fill="Number of Major Surgeries") +
+  ylab("Number of Major Surgeries") +
+  xlab("Premium Price")
+
+grid.arrange(v7, v8, v9, v10, nrow=2)
+```
+
+# split data into training and testing sets
+```{r message=FALSE}
+set.seed(11)
+med.split <- initial_split(medpremium, prop = 3/4)
+med.train <- training(med.split)
+med.test <- testing(med.split)
+```
+
+# Standard decision tree 
+```{r message=FALSE}
+medcost.model <- rpart(premium_price ~., data = med.train, method = "anova")
+rpart.plot(medcost.model, main = "Prediction of Yearly Medical Coverage Costs", extra = 101, digits = -1, yesno = 2, type = 5)
+
+yhat.tree <- predict(medcost.model, med.test)
+mse.tree <- sum((med.test$premium_price-yhat.tree)^2)/length(med.test$premium_price)
+r2.tree <- 1-(sum((med.test$premium_price-yhat.tree)^2)/sum((med.test$premium_price-mean(med.test$premium_price))^2))
+
+yhat.tree.train <- predict(medcost.model, med.train)
+mse.tree.train <- sum((med.train$premium_price-yhat.tree.train)^2)/length(med.train$premium_price)
+r2.tree.train <- 1-(sum((med.train$premium_price-yhat.tree.train)^2)/sum((med.train$premium_price-mean(med.train$premium_price))^2))
+```
+
+# Bagging
+```{r}
+set.seed(2)
+medcost.bag.model <- randomForest(premium_price ~., data = med.train, mtry = 10, importance = TRUE)
+medcost.bag.model 
+
+yhat.bag <- predict(medcost.bag.model, med.test)
+mse.bag <- sum((med.test$premium_price-yhat.bag)^2)/length(med.test$premium_price)
+
+yhat.bag.train <- predict(medcost.bag.model, med.train)
+mse.bag.train <- sum((med.train$premium_price-yhat.bag.train)^2)/length(med.train$premium_price)
+```
+
+# Random Forest
+```{r}
+set.seed(202)
+medcost.rf.model <- randomForest(premium_price ~., data = med.train, mtry = 3, importance = TRUE)
+medcost.rf.model
+
+yhat.rf <- predict(medcost.rf.model, med.test)
+mse.rf <- sum((med.test$premium_price-yhat.rf)^2)/length(med.test$premium_price)
+
+yhat.rf.train <- predict(medcost.rf.model, med.train)
+mse.rf.train <- sum((med.train$premium_price-yhat.rf.train)^2)/length(med.train$premium_price)
+
+imp <- data.frame(importance(medcost.rf.model, type =1))
+imp <- rownames_to_column(imp, var = "variable")
+ggplot(imp, aes(x=reorder(variable, X.IncMSE), y=X.IncMSE, color=reorder(variable, X.IncMSE))) +
+  geom_point(show.legend=FALSE, size=3) +
+  geom_segment(aes(x=variable, xend=variable, y=0, yend=X.IncMSE), size=3, show.legend=FALSE) +
+  xlab("") +
+  ylab("% Increase in MSE") +
+  labs(title = "Variable Importance for Prediction of Premium Price") +
+  coord_flip() +
+  scale_color_manual(values = colorRampPalette(brewer.pal(1,"Purples"))(10)) +
+  theme_classic()
+
+imp %>%
+  arrange(desc(X.IncMSE)) %>%
+  rename(`% Increase in MSE` = X.IncMSE)
+
+
+```
+# Boosting
+```{r}
+set.seed(202)
+medcost.boost.model <- gbm(premium_price ~., data = med.train, distribution = "gaussian", n.trees = 5000, interaction.depth = 4)
+
+df <- data.frame(summary(medcost.boost.model, plotit = FALSE), row.names = NULL)
+ggplot(df, aes(x=reorder(var,rel.inf), y=rel.inf, fill=reorder(var,rel.inf))) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Relative Influence of Variables in Predicting Premium Price") +
+  ylab("Relative Influence") +
+  xlab("") +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(1,"Oranges"))(10)) +
+  theme_classic()
+
+df %>%
+  rename(Variable = var) %>%
+  rename(`Relative Influence` = rel.inf)
+
+yhat.boost <- predict(medcost.boost.model, med.test)
+mse.boost <- sum((med.test$premium_price-yhat.boost)^2)/length(med.test$premium_price)
+r2.boost <- 1-(sum((med.test$premium_price-yhat.boost)^2)/sum((med.test$premium_price-mean(med.test$premium_price))^2))
+
+yhat.boost.train <- predict(medcost.boost.model, med.train)
+mse.boost.train <- sum((med.train$premium_price-yhat.boost.train)^2)/length(med.train$premium_price)
+r2.boost.train <- 1-(sum((med.train$premium_price-yhat.boost.train)^2)/sum((med.train$premium_price-mean(med.train$premium_price))^2))
+```
+
+# Comparison of 4 tree based models 
+```{r}
+p1 <- ggplot(mapping = aes(x = med.test$premium_price, y = yhat.bag)) +
+  geom_point(color = "#FFB5C5") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "Bagging")
+
+p2 <- ggplot(mapping = aes(x = med.test$premium_price, y = yhat.rf)) +
+  geom_point(color = "#BF87B3") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "Random Forest")
+
+p3 <- ggplot(mapping = aes(x = med.test$premium_price, y = yhat.boost)) +
+  geom_point(color = "#7F5AA2") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "Boosting")
+
+p4 <- ggplot(mapping = aes(x = med.test$premium_price, y = yhat.tree)) +
+  geom_point(color = "#000080") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "Standard Regression Tree")
+
+grid.arrange(p1, p2, p3, p4, nrow=2)
+
+tree.mse.df <- data.frame(rbind(c("Single Regression Tree", mse.tree), c("Bagging (10 variables)", mse.bag), c("Random Forest", mse.rf), c("Boosting", mse.boost)))
+
+tree.mse.df <- tree.mse.df %>%
+  mutate(X2 = as.numeric(X2)) %>%
+  arrange(-desc(X2)) %>%
+  rename("Tree Method" = X1, "Mean Squared Error" = X2)
+
+tree.mse.df
+```
+
+# Linear Regression Models: forward selection, backward selection
+```{r}
+linear.fwd <- step(lm(premium_price ~., data=med.train), direction = c("forward"))
+summary(linear.fwd)
+fwd.pred = predict(linear.fwd, med.test)
+mse.fwd = sum((med.test$premium_price-fwd.pred)^2)/length(med.test$premium_price)
+
+fwd.pred.train = predict(linear.fwd, med.train)
+mse.fwd.train = sum((med.train$premium_price-fwd.pred.train)^2)/length(med.train$premium_price)
+
+linear.bwd = step(lm(premium_price ~., data=med.train), direction = c("backward"))
+summary(linear.bwd)
+bwd.pred = predict(linear.bwd, med.test)
+mse.bwd = sum((med.test$premium_price-bwd.pred)^2)/length(med.test$premium_price)
+
+bwd.pred.train = predict(linear.bwd, med.train)
+mse.bwd.train = sum((med.train$premium_price-bwd.pred.train)^2)/length(med.train$premium_price)
+```
+
+# Ridge Regression Model
+```{r}
+grid = 10^seq(10, -2, length=100)
+xtrain = model.matrix(premium_price ~.,med.train)[,-1]
+ytrain = med.train$premium_price
+xtest = model.matrix(premium_price ~.,med.test)[,-1]
+ytest = med.test$premium_price
+
+cv.ridge.out = cv.glmnet(xtrain, ytrain, alpha=0, )
+bestlam.ridge = cv.ridge.out$lambda.min
+i <- which(cv.ridge.out$lambda == cv.ridge.out$lambda.min)
+mse.min.ridge <- cv.ridge.out$cvm[i]
+
+ridge.model = glmnet(xtrain, ytrain, alpha=0, lambda=bestlam.ridge)
+
+ridge.pred = predict(ridge.model, newx=xtest)
+mse.ridge = sum((med.test$premium_price-ridge.pred)^2)/length(med.test$premium_price)
+r2.ridge = 1-(sum((med.test$premium_price-ridge.pred)^2)/sum((med.test$premium_price-mean(med.test$premium_price))^2))
+
+ggplot(mapping = aes(x=log(cv.ridge.out$lambda), y=cv.ridge.out$cvm)) +
+  geom_point() +
+  geom_point(aes(x=log(bestlam.ridge), y=mse.min.ridge, color="blue", size = 2), show.legend = FALSE, color="blue") +
+  geom_errorbar(aes(ymin=cv.ridge.out$cvm-cv.ridge.out$cvsd, ymax=cv.ridge.out$cvm+cv.ridge.out$cvsd), color="gray") +
+  xlab("Log(lambda)") +
+  ylab("Mean Squared Error") +
+  labs(title = "Optimal Lambda for Ridge Regression", subtitle = paste("Best Lambda: ", bestlam.ridge)) +
+  theme_classic()
+
+ridge.coef <- rownames_to_column(data.frame(coef(ridge.model)[,1]), var = "Variable") %>%
+  rename(Coefficient = coef.ridge.model....1.)
+
+ridge.coef <- ridge.coef %>%
+  filter(Variable != "(Intercept)") %>%
+  arrange(desc(abs(Coefficient)))
+
+ridge.pred.train = predict(ridge.model, s=bestlam.ridge, newx=xtrain)
+mse.ridge.train = sum((med.train$premium_price-ridge.pred.train)^2)/length(med.train$premium_price)
+r2.ridge.train = 1-(sum((med.train$premium_price-ridge.pred.train)^2)/sum((med.train$premium_price-mean(med.train$premium_price))^2))
+
+```
+
+# LASSO Model
+```{r}
+cv.lasso.out = cv.glmnet(xtrain, ytrain, alpha=1)
+bestlam.lasso = cv.lasso.out$lambda.min
+i <- which(cv.lasso.out$lambda == cv.lasso.out$lambda.min)
+mse.min.lasso <- cv.lasso.out$cvm[i]
+
+lasso.model = glmnet(xtrain, ytrain, alpha=1, lambda=bestlam.lasso)
+
+lasso.pred = predict(lasso.model, newx=xtest)
+mse.lasso = sum((med.test$premium_price-lasso.pred)^2)/length(med.test$premium_price)
+r2.lasso = 1-(sum((med.test$premium_price-lasso.pred)^2)/sum((med.test$premium_price-mean(med.test$premium_price))^2))
+
+lasso.pred.train = predict(lasso.model, s=bestlam.lasso, newx=xtrain)
+mse.lasso.train = sum((med.train$premium_price-lasso.pred.train)^2)/length(med.train$premium_price)
+r2.lasso.train = 1-(sum((med.train$premium_price-lasso.pred.train)^2)/sum((med.train$premium_price-mean(med.train$premium_price))^2))
+
+ggplot(mapping = aes(x=log(cv.lasso.out$lambda), y=cv.lasso.out$cvm)) +
+  geom_point() +
+  geom_point(aes(x=log(bestlam.lasso), y=mse.min.lasso, size = 2), show.legend = FALSE, color="red") +
+  geom_errorbar(aes(ymin=cv.lasso.out$cvm-cv.lasso.out$cvsd, ymax=cv.lasso.out$cvm+cv.lasso.out$cvsd), color="gray") +
+  xlab("Log(lambda)") +
+  ylab("Mean Squared Error") +
+  labs(title = "Optimal Lambda for Lasso Regression", subtitle = paste("Best Lambda: ", bestlam.lasso)) +
+  theme_classic()
+
+lasso.coef <- rownames_to_column(data.frame(coef(lasso.model)[,1]), var = "Variable") %>%
+  rename(Coefficient = coef.lasso.model....1.)
+
+lasso.coef <- lasso.coef %>%
+  filter(Variable != "(Intercept)") %>%
+  arrange(desc(abs(Coefficient)))
+
+coef.compare <- lasso.coef %>%
+  left_join(ridge.coef, by = "Variable") %>%
+  rename("Lasso Coefficient" = Coefficient.x) %>%
+  rename("Ridge Coefficient" = Coefficient.y)
+
+coef.compare
+
+```
+
+# PCR Model: 5 directions, 9 directions
+```{r}
+pcr.model = pcr(premium_price ~., data=med.train, scale=TRUE, validation ="CV")
+summary(pcr.model)
+validationplot(pcr.model, val.type="MSEP", main = "Premium Price", ylab = "Mean Squared Error")
+validationplot(pcr.model, val.type="R2", main = "Premium Price", ylab = "R squared")
+
+pcr.pred5 = predict(pcr.model, med.test, ncomp = 5)
+mse.pcr5 = sum((med.test$premium_price-pcr.pred5)^2)/length(med.test$premium_price)
+
+pcr.pred5.train = predict(pcr.model, med.train, ncomp = 5)
+mse.pcr5.train = sum((med.train$premium_price-pcr.pred5.train)^2)/length(med.train$premium_price)
+
+pcr.pred9 = predict(pcr.model, med.test, ncomp = 9)
+mse.pcr9 = sum((med.test$premium_price-pcr.pred9)^2)/length(med.test$premium_price)
+
+pcr.pred9.train = predict(pcr.model, med.train, ncomp = 9)
+mse.pcr9.train = sum((med.train$premium_price-pcr.pred9.train)^2)/length(med.train$premium_price)
+
+ds <- data.frame(summary(pcr.model))
+
+```
+
+# Comparison of 6 Regression models
+```{r}
+lr.mse.df <- data.frame(rbind(c("Forward Selection", mse.fwd), c("Backward Selection", mse.bwd), c("Ridge Regression", mse.ridge), c("Lasso Regression", mse.lasso), c("PCR (5 directions)", mse.pcr5), c("PCR (9 directions)", mse.pcr9)))
+
+lr.mse.df <- lr.mse.df %>%
+  mutate(X2 = as.numeric(X2)) %>%
+  arrange(-desc(X2)) %>%
+  rename("Regression Method" = X1, "Mean Squared Error" = X2)
+
+lr.mse.df
+
+p5 <- ggplot(mapping = aes(x = med.test$premium_price, y = fwd.pred)) +
+  geom_point(color = "turquoise") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "Forward Selection")
+
+p6 <- ggplot(mapping = aes(x = med.test$premium_price, y = bwd.pred)) +
+  geom_point(color = "purple") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "Backward Selection")
+
+p7 <- ggplot(mapping = aes(x = med.test$premium_price, y = ridge.pred)) +
+  geom_point(color = "pink") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "Ridge Regression")
+
+p8 <- ggplot(mapping = aes(x = med.test$premium_price, y = lasso.pred)) +
+  geom_point(color = "steelblue4") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "Lasso")
+
+p9 <- ggplot(mapping = aes(x = med.test$premium_price, y = pcr.pred5)) +
+  geom_point(color = "salmon1") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "PCR (5 directions)")
+
+p10 <- ggplot(mapping = aes(x = med.test$premium_price, y = pcr.pred9)) +
+  geom_point(color = "palegreen3") +
+  geom_abline(slope = 1) +
+  xlab("Predicted Premium Price") +
+  ylab("Actual Premium Price") +
+  labs(title = "PCR (9 directions)")
+
+grid.arrange(p5, p6, p7, p8, p9, p10, nrow=2)
+
+```
+
+# Ranking and comparison of all 10 models
+```{r}
+final.comp <- tree.mse.df %>%
+  rename("Regression Method" = "Tree Method") %>%
+  rbind(lr.mse.df) %>%
+  arrange(`Mean Squared Error`)
+
+final.comp
+
+ggplot(final.comp, aes(x=reorder(`Regression Method`, `Mean Squared Error`), y=`Mean Squared Error`, fill=`Regression Method`)) +
+  geom_col() +
+  xlab("Regression Method") +
+  theme(axis.text.x = element_blank()) +
+  scale_fill_discrete(limits = final.comp$`Regression Method`) +
+  labs(title = "Comparison of MSE Across All 10 Models")
+```
+
+# Comparison of R Squared for 4 Models
+```{r}
+lr.r2.df <-data.frame(rbind(c("Boosting", r2.boost),c("Single Regression Tree", r2.tree),c("Ridge Regression", r2.ridge),c("Lasso Regression", r2.lasso)))
+lr.r2.df <- lr.r2.df%>%
+  mutate(X2 =as.numeric(X2))%>%
+  arrange(desc(X2))%>%
+  rename("Regression Method" = X1, "R Squared" = X2)
+lr.r2.df
+```
+
+
+```{r}
+train.mse.df <- data.frame(rbind(c("Forward Selection", mse.fwd.train), c("Backward Selection", mse.bwd.train), c("Ridge Regression", mse.ridge.train), c("Lasso Regression", mse.lasso.train), c("Principal Components (5 directions)", mse.pcr5.train), c("Principal Components (9 directions)", mse.pcr9.train)))
+
+train.mse.df <- train.mse.df %>%
+  mutate(X2 = as.numeric(X2)) %>%
+  arrange(-desc(X2)) %>%
+  rename("Regression Method" = X1, "Mean Squared Error" = X2)
+
+train.mse.df
+```
+
+
