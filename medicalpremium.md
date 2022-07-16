@@ -158,7 +158,7 @@ v6 <- ggplot(medpremium) +
 grid.arrange(v1, v2, v3, v4, v5, v6, nrow=2)
 ```
 
-![](medicalpremium_files/figure-gfm/exp1-1.png)<!-- -->
+![](figure-gfm/exp1-1.png)
 
 There appears to be a substantial difference in premium price for
 individuals that have had transplants compared to individuals that have
@@ -204,7 +204,7 @@ v10 <- ggplot(medpremium, mapping=aes(x=premium_price, y=factor(number_of_major_
 grid.arrange(v7, v8, v9, v10, nrow=2)
 ```
 
-![](medicalpremium_files/figure-gfm/exp2-1.png)<!-- -->
+![](figure-gfm/exp2-1.png)
 
 There seems to be a positive correlation between age and premium price,
 for an increase in age coincides with an in increase in premium price.
@@ -484,7 +484,7 @@ s2 <- ggplot(mapping = aes(x=log(cv.lasso.out$lambda), y=cv.lasso.out$cvm)) +
 grid.arrange(s1, s2, nrow=2)
 ```
 
-![](medicalpremium_files/figure-gfm/lambda-1.png)<!-- -->
+![](figure-gfm/lambda-1.png)
 
 The amount of shrinkage for each method is determined by lambda, a
 tuning parameter. Lambda was chosen for each method by 10 fold cross
@@ -561,7 +561,7 @@ pcr.model = pcr(premium_price ~., data=med.train, scale=TRUE, validation ="CV")
 validationplot(pcr.model, val.type="MSEP", main = "Premium Price", ylab = "Mean Squared Error")
 ```
 
-![](medicalpremium_files/figure-gfm/pc-1.png)<!-- -->
+![](figure-gfm/pc-1.png)
 
 ``` r
 summary(pcr.model)
@@ -659,7 +659,7 @@ medcost.model <- rpart(premium_price ~., data = med.train, method = "anova")
 rpart.plot(medcost.model, main = "Prediction of Yearly Medical Coverage Costs", extra = 101, digits = -1, yesno = 2, type = 5)
 ```
 
-![](medicalpremium_files/figure-gfm/treeplot-1.png)<!-- -->
+![](figure-gfm/treeplot-1.png)
 
 ``` r
 pred.tree.train <- predict(medcost.model, med.train)
@@ -765,7 +765,7 @@ ggplot(imp, aes(x=reorder(variable, X.IncMSE), y=X.IncMSE, color=reorder(variabl
   theme_classic()
 ```
 
-![](medicalpremium_files/figure-gfm/varimp-1.png)<!-- -->
+![](figure-gfm/varimp-1.png)
 
 ``` r
 imp %>%
@@ -851,7 +851,7 @@ ggplot(df, aes(x=reorder(var,rel.inf), y=rel.inf, fill=reorder(var,rel.inf))) +
   theme_classic()
 ```
 
-![](medicalpremium_files/figure-gfm/relinf-1.png)<!-- -->
+![](figure-gfm/relinf-1.png)
 
 ``` r
 df %>%
@@ -975,13 +975,13 @@ p10 <- ggplot(mapping = aes(x = med.test$premium_price, y = pcr.pred9.test)) +
 grid.arrange(p1, p2, p3, p4, nrow=2)
 ```
 
-![](medicalpremium_files/figure-gfm/complinear-1.png)<!-- -->
+![](figure-gfm/complinear-1.png)
 
 ``` r
 grid.arrange(p5, p6, p7, p8, p9, p10, nrow=3)
 ```
 
-![](medicalpremium_files/figure-gfm/complinear-2.png)<!-- -->
+![](figure-gfm/complinear-2.png)
 
 ``` r
 mse.df <- data.frame(rbind(c("Forward Selection", mse.fwd.test), c("Backward Selection", mse.bwd.test), c("Ridge Regression", mse.ridge.test), c("Lasso Regression", mse.lasso.test), c("PCR (5 directions)", mse.pcr5.test), c("PCR (9 directions)", mse.pcr9.test), c("Single Regression Tree", mse.tree.test), c("Bagging (10 variables)", mse.bag.test), c("Random Forest", mse.rf.test), c("Boosting", mse.boost.test)))
@@ -1027,7 +1027,7 @@ mse.compare <- ggplot(mse.df, aes(x=reorder(`Regression Method`, `Mean Squared E
 mse.compare
 ```
 
-![](medicalpremium_files/figure-gfm/msegraph-1.png)<!-- -->
+![](figure-gfm/msegraph-1.png)
 
 The bar chart above provides a visual comparison of the MSE across the
 ten models. We see a similar MSE between bagging, the single regression
